@@ -10,3 +10,4 @@ Note: `jupytext --to markdown your_notebook.ipynb` to convert to Markdown.
 | Project | Description | Links |
 |---------|-------------|----------|
 | Multi-Agent with State Pattern | Demonstrates a multi-agent system with state pattern | [NB](250416-multi-agent-w-state-pattern/250416-multi-agent-w-state-pattern.ipynb) |
+| xy + t | A video as a translucent 3D volume (x, y, time) you can rotate, cut and play through | [App](260918-xy-plus-t/) |
