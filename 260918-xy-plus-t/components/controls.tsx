@@ -12,6 +12,8 @@ type ControlsProps = {
   onCutsChange: (cuts: Cuts) => void;
   opacity: Opacity;
   onOpacityChange: (opacity: Opacity) => void;
+  blur: number;
+  onBlurChange: (blur: number) => void;
   active: number;
   frames: number;
   playing: boolean;
@@ -29,6 +31,8 @@ export function Controls({
   onCutsChange,
   opacity,
   onOpacityChange,
+  blur,
+  onBlurChange,
   active,
   frames,
   playing,
@@ -77,6 +81,17 @@ export function Controls({
       </div>
 
       <div className="grid grid-cols-[5ch_8rem] items-center gap-x-4">
+        <label className="contents">
+          <span>blur</span>
+          <Slider
+            aria-label="haze blur"
+            min={0}
+            max={1}
+            step={0.01}
+            value={blur}
+            onValueChange={(value) => onBlurChange(value as number)}
+          />
+        </label>
         {LAYERS.map((layer) => (
           <label key={layer} className="contents">
             <span>{layer}</span>

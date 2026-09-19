@@ -12,7 +12,11 @@ const VideoCube = dynamic(() => import("@/components/video-cube"), { ssr: false 
 
 const UNCUT: Cuts = { x: [0, 1], y: [0, 1], t: [0, 1] };
 const OPACITY: Opacity = { haze: 0.85, frame: 0.9 };
+const BLUR = 0;
 const IDLE_AFTER_MS = 2000;
+/** A hairline-underlined link that stays clickable inside the header, which lets clicks through. */
+const LINK =
+  "pointer-events-auto underline decoration-foreground/20 underline-offset-2 transition-colors hover:text-foreground";
 
 export default function Home() {
   const [volume, setVolume] = useState<Volume | null>(null);
@@ -22,6 +26,7 @@ export default function Home() {
 
   const [cuts, setCuts] = useState<Cuts>(UNCUT);
   const [opacity, setOpacity] = useState<Opacity>(OPACITY);
+  const [blur, setBlur] = useState(BLUR);
   const [active, setActive] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [resetKey, setResetKey] = useState(0);
@@ -60,6 +65,7 @@ export default function Home() {
   const reset = useCallback(() => {
     setCuts(UNCUT);
     setOpacity(OPACITY);
+    setBlur(BLUR);
     setResetKey((k) => k + 1);
   }, []);
 
@@ -108,6 +114,7 @@ export default function Home() {
             active={active}
             playing={playing}
             opacity={opacity}
+            blur={blur}
             onActiveChange={setActive}
             onPlayingChange={setPlaying}
             resetKey={resetKey}
@@ -121,6 +128,18 @@ export default function Home() {
       <header className="pointer-events-none absolute top-0 left-0 p-6 sm:p-10">
         <h1 className="text-lg tracking-wide">xy + t</h1>
         <p className="mt-1 text-xs text-muted-foreground">a video, held as an object</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          created by{" "}
+          <a href="https://www.yixtian.com/" target="_blank" rel="noreferrer" className={LINK}>
+            Yixin Tian
+          </a>
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          inspired by{" "}
+          <a href="https://www.bradleytangonan.com/about" target="_blank" rel="noreferrer" className={LINK}>
+            Bradley Tangonan&rsquo;s xy+t
+          </a>
+        </p>
       </header>
 
       {volume && (
@@ -134,6 +153,8 @@ export default function Home() {
             onCutsChange={setCuts}
             opacity={opacity}
             onOpacityChange={setOpacity}
+            blur={blur}
+            onBlurChange={setBlur}
             active={active}
             frames={volume.depth}
             playing={playing}

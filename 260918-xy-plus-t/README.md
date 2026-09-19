@@ -2,6 +2,8 @@
 
 A video, held as an object. Drop in a clip and its frames stack up through time into a cube you can rotate, zoom and pan. Every frame is a faint, translucent layer. The one active frame is bright and solid, and it travels through the haze once as the video plays.
 
+Inspired by "xy+t", an artwork by [Bradley Tangonan](https://www.bradleytangonan.com/about).
+
 ## Run
 
 ```sh
@@ -17,6 +19,7 @@ Open http://localhost:3000 and drop in a video. Everything runs in the browser, 
 |---|---|
 | drag · scroll · right-drag | rotate · zoom · pan |
 | `x` `y` `t` sliders | cut the cube along an axis. Cut faces show slit-scans. |
+| `blur` slider | soften the haze of inactive frames; cut faces and the active frame stay sharp |
 | `space` | play the clip once, from the start of the `t` range / pause |
 | `r` | reset the cuts and the camera |
 | save image | download the current view as a 4K PNG, with the clip's stats and the project name |

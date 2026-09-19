@@ -17,6 +17,8 @@ export type Opacity = { haze: number; frame: number };
 const TIME_LENGTH = 1.6;
 /** How much a freshly cut face stands out from the haze. */
 const CUT_SURFACE = 0.3;
+/** Mip level the haze is sampled at when the blur slider is at its maximum: 2⁵ = 32 voxels across. */
+const MAX_BLUR_LOD = 5;
 /** Opacity of the whole cube once the clip has played through once. */
 const PLAYED = 0.9;
 
@@ -44,6 +46,7 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uScale;
   uniform vec3 uBg;
   uniform float uHaze;
+  uniform float uBlurLod;
   uniform float uCutSurface;
   uniform float uActiveAlpha;
   uniform float uOpacity;
@@ -51,8 +54,9 @@ const fragmentShader = /* glsl */ `
   in vec3 vPos;
   out vec4 fragColor;
 
-  vec4 sampleVolume(vec3 p) {
-    return texture(uVolume, vec3(p.x, 1.0 - p.y, 1.0 - p.z));
+  // an explicit mip level: inside the raymarch loop, texture() would pick one from undefined derivatives
+  vec4 sampleVolume(vec3 p, float lod) {
+    return textureLod(uVolume, vec3(p.x, 1.0 - p.y, 1.0 - p.z), lod);
   }
 
   void over(inout vec4 acc, vec3 color, float alpha) {
@@ -93,7 +97,7 @@ const fragmentShader = /* glsl */ `
     float onCut = dot(step(abs(pe - uMin), vec3(eps)) * step(eps, uMin), vec3(1.0))
                 + dot(step(abs(pe - uMax), vec3(eps)) * step(uMax, vec3(1.0 - eps)), vec3(1.0));
     if (onCut > 0.0 && tEnd - tEnter > 1e-4) {
-      over(acc, sampleVolume(pe).rgb, uCutSurface);
+      over(acc, sampleVolume(pe, 0.0).rgb, uCutSurface);
     }
 
     // translucent haze of every other frame: about one step per voxel crossed, within a budget
@@ -106,7 +110,8 @@ const fragmentShader = /* glsl */ `
     for (int i = 0; i < MAX_STEPS; i++) {
       if (i >= steps) break;
       vec3 p = ro + rd * (tEnter + (float(i) + jitter) * dt);
-      vec3 c = sampleVolume(p).rgb;
+      // the haze reads a coarser mip level to blur; cut faces and the active frame stay sharp
+      vec3 c = sampleVolume(p, uBlurLod).rgb;
       // pixels that differ from the paper carry more ink
       float weight = 0.35 + 0.65 * min(distance(c, uBg), 1.0);
       float a = 1.0 - pow(1.0 - clamp(uHaze * weight, 0.0, 0.99), exposure);
@@ -167,11 +172,13 @@ type VolumeMeshProps = {
   active: number;
   playing: boolean;
   opacity: Opacity;
+  /** How blurred the haze of inactive frames is, from 0 (sharp) to 1. */
+  blur: number;
   onActiveChange: (active: number) => void;
   onPlayingChange: (playing: boolean) => void;
 };
 
-function VolumeMesh({ volume, cuts, active, playing, opacity, onActiveChange, onPlayingChange }: VolumeMeshProps) {
+function VolumeMesh({ volume, cuts, active, playing, opacity, blur, onActiveChange, onPlayingChange }: VolumeMeshProps) {
   const mesh = useRef<THREE.Mesh>(null);
   const colors = useThemeColors();
   const scale = useMemo(
@@ -183,7 +190,9 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, onActiveChange, on
     const tex = new THREE.Data3DTexture(volume.data, volume.width, volume.height, volume.depth);
     tex.format = THREE.RGBAFormat;
     tex.type = THREE.UnsignedByteType;
-    tex.minFilter = THREE.LinearFilter;
+    // mip levels are what the blur slider reads from
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.magFilter = THREE.LinearFilter;
     tex.unpackAlignment = 1;
     tex.needsUpdate = true;
@@ -243,6 +252,7 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, onActiveChange, on
           uScale: { value: new THREE.Vector3() },
           uBg: { value: new THREE.Vector3() },
           uHaze: { value: 0 },
+          uBlurLod: { value: 0 },
           uCutSurface: { value: CUT_SURFACE },
           uActiveAlpha: { value: 0 },
           uOpacity: { value: 1 },
@@ -311,6 +321,7 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, onActiveChange, on
     u.uActive.value = activeVisible ? 1 - activeT : -1;
     u.uBg.value.copy(srgb(colors.paper));
     u.uHaze.value = opacity.haze;
+    u.uBlurLod.value = blur * MAX_BLUR_LOD;
     u.uActiveAlpha.value = opacity.frame;
     u.uOpacity.value = THREE.MathUtils.damp(u.uOpacity.value, played ? PLAYED : 1, 3, delta);
     u.uCamera.value.copy(mesh.current.worldToLocal(camera.position.clone())).addScalar(0.5);
