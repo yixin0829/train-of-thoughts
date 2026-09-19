@@ -1,11 +1,10 @@
 [project]
-name = "train-of-thoughts"
+name = "multi-agent-w-state-pattern"
 version = "0.1.0"
 authors = [
     { name="Yixin Tian", email="yixin0829@outlook.com"}
 ]
-description = "A collection of projects"
-readme = "README.md"
+description = "Multi-agent system with the state pattern"
 requires-python = ">=3.12"
 dependencies = [
     "litellm>=1.65.0",
