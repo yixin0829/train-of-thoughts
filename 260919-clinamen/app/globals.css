@@ -1,0 +1,55 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --font-serif: var(--font-cormorant);
+  --font-sans: var(--font-karla);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+}
+
+/* the room: cream porcelain ink over a dark slate floor, pool-blue glass panels. One palette, light or dark. */
+:root {
+  --background: #1f2429;
+  --foreground: #f7f3ec;
+  --primary: #f7f3ec;
+  --primary-foreground: #0f6392;
+  --muted: color-mix(in oklab, #f7f3ec 10%, transparent);
+  --muted-foreground: color-mix(in oklab, #f7f3ec 74%, transparent);
+  --border: color-mix(in oklab, #f7f3ec 22%, transparent);
+  --input: var(--border);
+  --ring: #f1d9b5;
+  --destructive: #b5452b;
+  --radius: 0.5rem;
+  --panel: rgba(8, 42, 66, 0.5);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background font-sans text-foreground;
+  }
+}
+
+@layer components {
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+}

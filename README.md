@@ -11,3 +11,4 @@ Note: `jupytext --to markdown your_notebook.ipynb` to convert to Markdown.
 |---------|-------------|----------|
 | Multi-Agent with State Pattern | Demonstrates a multi-agent system with state pattern | [NB](250416-multi-agent-w-state-pattern/250416-multi-agent-w-state-pattern.ipynb) |
 | xy + t | A video as a translucent 3D volume (x, y, time) you can rotate, cut and play through. Inspired by Bradley Tangonan's "xy+t" | [App](260918-xy-plus-t/) |
+| clinamen | Porcelain bowls drift on a 3D pool of blue water and ring when they collide, with a sound model fitted to the installation's recording. Inspired by Céleste Boursier-Mougenot's "clinamen" | [App](260919-clinamen/) |
