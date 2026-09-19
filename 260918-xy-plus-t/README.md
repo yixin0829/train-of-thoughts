@@ -26,7 +26,7 @@ Open http://localhost:3000 and drop in a video. Everything runs in the browser, 
 
 ## How it works
 
-- `lib/extract-frames.ts` seeks through the video and samples up to 256 evenly spaced frames at 320px wide. It stores them in one RGBA volume.
+- `lib/extract-frames.ts` seeks through the video and samples up to 256 evenly spaced frames at 576px on the long edge. It stores them in one RGBA volume.
 - `components/video-cube.tsx` uploads that volume as a WebGL2 3D texture and raymarches it inside a box:
   - Each sample adds a little translucent colour. Pixels that differ more from the page colour carry more ink.
   - The ray stops at the active frame's plane and draws that frame at full brightness.

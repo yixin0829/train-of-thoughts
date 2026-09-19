@@ -137,7 +137,7 @@ export default function Home() {
         <p className="mt-1 text-xs text-muted-foreground">
           inspired by{" "}
           <a href="https://www.bradleytangonan.com/about" target="_blank" rel="noreferrer" className={LINK}>
-            Bradley Tangonan&rsquo;s xy+t
+            Bradley Tangonan&rsquo;s artwork
           </a>
         </p>
       </header>

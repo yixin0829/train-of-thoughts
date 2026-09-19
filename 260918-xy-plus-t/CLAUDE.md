@@ -26,7 +26,7 @@ For a test clip, use `ffmpeg -f lavfi -i testsrc2=duration=6:size=1920x1080:rate
 
 Data flow: `app/page.tsx` owns all state (volume, cuts, `active`, `playing`). It passes that state down to `components/drop-zone.tsx` (empty and loading screens), `components/video-cube.tsx` (the 3D view, loaded with `ssr: false`) and `components/controls.tsx`.
 
-**Two resolutions, on purpose.** `lib/extract-frames.ts` seeks through the video and stacks up to 256 frames at 320px wide into one RGBA `Data3DTexture`. That is the translucent haze and the slit-scan cut faces. A full-resolution volume would be gigabytes. The same `<video>` element is kept alive in `Volume.video`, and the **active frame** is sampled from it at native resolution as a 2D texture. `releaseVolume` pauses the video and revokes its object URL, and the page calls it when a volume is replaced.
+**Two resolutions, on purpose.** `lib/extract-frames.ts` seeks through the video and stacks up to 256 frames, 576px on the long edge, into one RGBA `Data3DTexture`. That is the translucent haze and the slit-scan cut faces. A full-resolution volume would be gigabytes. The same `<video>` element is kept alive in `Volume.video`, and the **active frame** is sampled from it at native resolution as a 2D texture. `releaseVolume` pauses the video and revokes its object URL, and the page calls it when a volume is replaced.
 
 **One raymarching shader draws everything** (`fragmentShader` in `video-cube.tsx`):
 - It works in box space `p ∈ [0,1]³` with x right, y up and z toward the viewer. Time runs into the screen, so `t = 1 − p.z`.
@@ -42,6 +42,7 @@ Data flow: `app/page.tsx` owns all state (volume, cuts, `active`, `playing`). It
 - While paused, the video seeks to follow `active`, one seek at a time, which is how scrubbing works.
 - The video texture re-uploads only while the video is playing or after a `seeked` event.
 - Hovering the cube pauses playback. An invisible plane over the active frame is the drag handle: it projects the time axis to screen space and turns off OrbitControls while you drag.
+- The canvas uses `frameloop="demand"`, so nothing is drawn while the cube is still. A change to props or state invalidates it through an effect in `VolumeMesh`. `useFrame` keeps invalidating while the video plays or the fade settles, and a `seeked` event invalidates too. Anything new that changes the picture outside React state must call `invalidate()`.
 
 ## Gotchas
 

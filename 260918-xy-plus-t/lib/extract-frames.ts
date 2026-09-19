@@ -10,7 +10,8 @@ export type Volume = {
   span: number;
 };
 
-const TARGET_WIDTH = 320;
+/** Long edge of each sampled frame, so a clip costs the same memory in either orientation (16:9 → 576×324, ~190 MB). */
+const LONG_EDGE = 576;
 const MAX_FRAMES = 256;
 const SAMPLE_FPS = 30;
 
@@ -40,8 +41,9 @@ export async function extractFrames(
     video.width = video.videoWidth;
     video.height = video.videoHeight;
 
-    const width = TARGET_WIDTH;
-    const height = Math.round((TARGET_WIDTH * video.videoHeight) / video.videoWidth);
+    const scale = LONG_EDGE / Math.max(video.videoWidth, video.videoHeight);
+    const width = Math.round(video.videoWidth * scale);
+    const height = Math.round(video.videoHeight * scale);
     const depth = Math.max(2, Math.min(MAX_FRAMES, Math.floor(video.duration * SAMPLE_FPS)));
 
     const canvas = document.createElement("canvas");

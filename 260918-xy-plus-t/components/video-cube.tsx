@@ -155,6 +155,15 @@ const SLIDER_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   </svg>`,
 )}") 12 12, ew-resize`;
 
+/** The outline of a unit plane, scaled onto the active frame. */
+const UNIT_SQUARE: [number, number, number][] = [
+  [-0.5, -0.5, 0],
+  [0.5, -0.5, 0],
+  [0.5, 0.5, 0],
+  [-0.5, 0.5, 0],
+  [-0.5, -0.5, 0],
+];
+
 /** Whether the active frame lies inside the t cut, and so is drawn. */
 function showsActive(active: number, cuts: Cuts) {
   return active >= cuts.t[0] - 1e-6 && active <= cuts.t[1] + 1e-6;
@@ -210,12 +219,18 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, blur, onActiveChan
     return tex;
   }, [volume]);
   useEffect(() => () => frame.dispose(), [frame]);
+  // the canvas only draws when invalidated, so every change to what it shows asks for a frame
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => invalidate());
   const frameDirty = useRef(true);
   useEffect(() => {
-    const markDirty = () => (frameDirty.current = true);
+    const markDirty = () => {
+      frameDirty.current = true;
+      invalidate();
+    };
     volume.video.addEventListener("seeked", markDirty);
     return () => volume.video.removeEventListener("seeked", markDirty);
-  }, [volume]);
+  }, [volume, invalidate]);
   // the frame loop drives the video imperatively, so it reaches both through a ref
   const playback = useRef({ video: volume.video, frame });
   useEffect(() => {
@@ -323,25 +338,22 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, blur, onActiveChan
     u.uHaze.value = opacity.haze;
     u.uBlurLod.value = blur * MAX_BLUR_LOD;
     u.uActiveAlpha.value = opacity.frame;
-    u.uOpacity.value = THREE.MathUtils.damp(u.uOpacity.value, played ? PLAYED : 1, 3, delta);
+    const fade = played ? PLAYED : 1;
+    u.uOpacity.value = THREE.MathUtils.damp(u.uOpacity.value, fade, 3, delta);
     u.uCamera.value.copy(mesh.current.worldToLocal(camera.position.clone())).addScalar(0.5);
+
+    // keep drawing while the video moves or the cube is still fading
+    if (playing || Math.abs(u.uOpacity.value - fade) > 1e-3) invalidate();
   });
 
   const edges = useMemo(() => new THREE.EdgesGeometry(new THREE.BoxGeometry(scale.x, scale.y, scale.z)), [scale]);
   useEffect(() => () => edges.dispose(), [edges]);
 
-  // the active frame's border, clipped to the x/y cuts
+  // the active frame's rectangle, clipped to the x/y cuts
   const toWorld = (p: number, size: number) => (p - 0.5) * size;
   const z = toWorld(1 - activeT, scale.z);
   const [x0, x1] = cuts.x.map((v) => toWorld(v, scale.x));
   const [y0, y1] = cuts.y.map((v) => toWorld(v, scale.y));
-  const border: [number, number, number][] = [
-    [x0, y0, z],
-    [x1, y0, z],
-    [x1, y1, z],
-    [x0, y1, z],
-    [x0, y0, z],
-  ];
 
   // Scrubbing: grab the active frame and slide it along the time axis as it appears on screen.
   const get = useThree((state) => state.get);
@@ -398,12 +410,11 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, blur, onActiveChan
         <lineBasicMaterial color={colors.ink} transparent opacity={0.15} />
       </lineSegments>
       {activeVisible && (
-        <>
-          <Line points={border} color={colors.ink} transparent opacity={0.65} lineWidth={1} />
+        // the frame moves by transform, so its border keeps one geometry instead of a new one per playback frame
+        <group position={[(x0 + x1) / 2, (y0 + y1) / 2, z]} scale={[x1 - x0, y1 - y0, 1]}>
+          <Line points={UNIT_SQUARE} color={colors.ink} transparent opacity={0.65} lineWidth={1} />
           {/* an invisible handle over the active frame */}
           <mesh
-            position={[(x0 + x1) / 2, (y0 + y1) / 2, z]}
-            scale={[x1 - x0, y1 - y0, 1]}
             onPointerOver={() => setCursor(SLIDER_CURSOR)}
             onPointerOut={() => {
               if (!grab.current) setCursor("");
@@ -429,7 +440,7 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, blur, onActiveChan
             <planeGeometry />
             <meshBasicMaterial side={THREE.DoubleSide} transparent opacity={0} depthWrite={false} />
           </mesh>
-        </>
+        </group>
       )}
     </group>
   );
@@ -439,13 +450,15 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, blur, onActiveChan
 function SaveOnRequest({ saveKey, volume, active, cuts }: { saveKey: number; volume: Volume; active: number; cuts: Cuts }) {
   const get = useThree((state) => state.get);
   const save = useEffectEvent(() => {
-    const { gl, scene, camera, size } = get();
+    const { gl, scene, camera, size, invalidate } = get();
     const dpr = gl.getPixelRatio();
     // at least 4K, and never below what the screen already shows
     gl.setPixelRatio(Math.max(dpr, SAVE_LONG_EDGE / Math.max(size.width, size.height)));
     gl.render(scene, camera);
     saveImage(gl.domElement, volume, showsActive(active, cuts) ? active : null);
     gl.setPixelRatio(dpr);
+    // resizing back cleared the canvas
+    invalidate();
   });
   useEffect(() => {
     if (saveKey) save();
@@ -455,10 +468,18 @@ function SaveOnRequest({ saveKey, volume, active, cuts }: { saveKey: number; vol
 
 type VideoCubeProps = VolumeMeshProps & { resetKey: number; saveKey: number };
 
+const PHI = (1 + Math.sqrt(5)) / 2;
+/** The camera turns 90°/φ² (≈34.4°) off the time axis, dividing the corner between the first frame and the side in the golden ratio. */
+const START_AZIMUTH = THREE.MathUtils.degToRad(90 / PHI ** 2);
+/** High enough that a 16:9 clip's outline on screen is a golden rectangle, φ times as wide as it is tall. */
+const START_ELEVATION = THREE.MathUtils.degToRad(11.33);
+const START_DISTANCE = 5.35;
+
 /** Where the camera starts; on screens narrower than they are tall it backs off so the cube fits across. */
 function startingCamera(): [number, number, number] {
   const back = Math.max(1, window.innerHeight / window.innerWidth);
-  return [2.9 * back, 1.6 * back, 4.2 * back];
+  const p = new THREE.Vector3().setFromSphericalCoords(START_DISTANCE * back, Math.PI / 2 - START_ELEVATION, START_AZIMUTH);
+  return [p.x, p.y, p.z];
 }
 
 export default function VideoCube({ resetKey, saveKey, ...props }: VideoCubeProps) {
@@ -470,6 +491,8 @@ export default function VideoCube({ resetKey, saveKey, ...props }: VideoCubeProp
   return (
     <Canvas
       flat
+      // a still cube costs nothing: frames are drawn only when something changes (see `invalidate`)
+      frameloop="demand"
       dpr={[1, 2]}
       performance={{ min: 0.5 }}
       camera={{ position: startingCamera(), fov: 30 }}
