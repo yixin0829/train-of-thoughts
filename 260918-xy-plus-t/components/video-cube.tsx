@@ -2,10 +2,11 @@
 
 import { AdaptiveDpr, Line, OrbitControls } from "@react-three/drei";
 import { Canvas, type ThreeEvent, useFrame, useThree } from "@react-three/fiber";
-import { type ComponentRef, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentRef, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 
 import type { Volume } from "@/lib/extract-frames";
+import { SAVE_LONG_EDGE, saveImage } from "@/lib/save-image";
 
 export type Range = [number, number];
 export type Cuts = { x: Range; y: Range; t: Range };
@@ -149,6 +150,11 @@ const SLIDER_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   </svg>`,
 )}") 12 12, ew-resize`;
 
+/** Whether the active frame lies inside the t cut, and so is drawn. */
+function showsActive(active: number, cuts: Cuts) {
+  return active >= cuts.t[0] - 1e-6 && active <= cuts.t[1] + 1e-6;
+}
+
 /** Hex colour → raw sRGB components, matching the unconverted bytes in the volume. */
 function srgb(hex: string) {
   const n = parseInt(hex.replace("#", ""), 16);
@@ -248,7 +254,7 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, onActiveChange, on
 
   // active 0..1 runs from the first sampled frame's centre to the last's
   const activeT = THREE.MathUtils.clamp((active * (volume.depth - 1) + 0.5) / volume.depth, cuts.t[0], cuts.t[1]);
-  const activeVisible = active >= cuts.t[0] - 1e-6 && active <= cuts.t[1] + 1e-6;
+  const activeVisible = showsActive(active, cuts);
 
   useFrame(({ camera }, delta) => {
     if (!mesh.current) return;
@@ -418,9 +424,33 @@ function VolumeMesh({ volume, cuts, active, playing, opacity, onActiveChange, on
   );
 }
 
-type VideoCubeProps = VolumeMeshProps & { resetKey: number };
+/** Whenever `saveKey` changes, draws the current view once at the saved image's size and saves it. */
+function SaveOnRequest({ saveKey, volume, active, cuts }: { saveKey: number; volume: Volume; active: number; cuts: Cuts }) {
+  const get = useThree((state) => state.get);
+  const save = useEffectEvent(() => {
+    const { gl, scene, camera, size } = get();
+    const dpr = gl.getPixelRatio();
+    // at least 4K, and never below what the screen already shows
+    gl.setPixelRatio(Math.max(dpr, SAVE_LONG_EDGE / Math.max(size.width, size.height)));
+    gl.render(scene, camera);
+    saveImage(gl.domElement, volume, showsActive(active, cuts) ? active : null);
+    gl.setPixelRatio(dpr);
+  });
+  useEffect(() => {
+    if (saveKey) save();
+  }, [saveKey]);
+  return null;
+}
 
-export default function VideoCube({ resetKey, ...props }: VideoCubeProps) {
+type VideoCubeProps = VolumeMeshProps & { resetKey: number; saveKey: number };
+
+/** Where the camera starts; on screens narrower than they are tall it backs off so the cube fits across. */
+function startingCamera(): [number, number, number] {
+  const back = Math.max(1, window.innerHeight / window.innerWidth);
+  return [2.9 * back, 1.6 * back, 4.2 * back];
+}
+
+export default function VideoCube({ resetKey, saveKey, ...props }: VideoCubeProps) {
   const controls = useRef<ComponentRef<typeof OrbitControls>>(null);
   useEffect(() => {
     if (resetKey) controls.current?.reset();
@@ -431,10 +461,11 @@ export default function VideoCube({ resetKey, ...props }: VideoCubeProps) {
       flat
       dpr={[1, 2]}
       performance={{ min: 0.5 }}
-      camera={{ position: [2.9, 1.6, 4.2], fov: 30 }}
+      camera={{ position: startingCamera(), fov: 30 }}
       gl={{ antialias: true, alpha: true }}
     >
       <VolumeMesh {...props} />
+      <SaveOnRequest saveKey={saveKey} volume={props.volume} active={props.active} cuts={props.cuts} />
       {/* drop to a coarser resolution while the camera moves, then sharpen at rest */}
       <AdaptiveDpr />
       <OrbitControls ref={controls} makeDefault regress enableDamping dampingFactor={0.08} minDistance={1.5} maxDistance={14} />

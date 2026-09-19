@@ -1,6 +1,6 @@
 "use client";
 
-import { Pause, Play, Plus, RotateCcw } from "lucide-react";
+import { ImageDown, Pause, Play, Plus, RotateCcw } from "lucide-react";
 import { useEffect, useEffectEvent } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ type ControlsProps = {
   playing: boolean;
   onPlayingChange: (playing: boolean) => void;
   onReset: () => void;
+  onSave: () => void;
   onNew: () => void;
 };
 
@@ -33,6 +34,7 @@ export function Controls({
   playing,
   onPlayingChange,
   onReset,
+  onSave,
   onNew,
 }: ControlsProps) {
   // Subscribed once: re-subscribing on every playback frame could drop a key press whose
@@ -102,6 +104,9 @@ export function Controls({
         </IconButton>
         <IconButton label="reset (r)" onClick={onReset}>
           <RotateCcw />
+        </IconButton>
+        <IconButton label="save image" onClick={onSave}>
+          <ImageDown />
         </IconButton>
         <IconButton label="another video" onClick={onNew}>
           <Plus />

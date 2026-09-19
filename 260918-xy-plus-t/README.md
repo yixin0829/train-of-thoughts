@@ -19,6 +19,7 @@ Open http://localhost:3000 and drop in a video. Everything runs in the browser, 
 | `x` `y` `t` sliders | cut the cube along an axis. Cut faces show slit-scans. |
 | `space` | play the clip once, from the start of the `t` range / pause |
 | `r` | reset the cuts and the camera |
+| save image | download the current view as a 4K PNG, with the clip's stats and the project name |
 
 ## How it works
 

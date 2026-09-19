@@ -25,6 +25,7 @@ export default function Home() {
   const [active, setActive] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [resetKey, setResetKey] = useState(0);
+  const [saveKey, setSaveKey] = useState(0);
   const [idle, setIdle] = useState(false);
 
   // a newer file cancels the extraction still in flight
@@ -110,6 +111,7 @@ export default function Home() {
             onActiveChange={setActive}
             onPlayingChange={setPlaying}
             resetKey={resetKey}
+            saveKey={saveKey}
           />
         </div>
       ) : (
@@ -137,6 +139,7 @@ export default function Home() {
             playing={playing}
             onPlayingChange={setPlaying}
             onReset={reset}
+            onSave={() => setSaveKey((k) => k + 1)}
             onNew={() => {
               setPlaying(false);
               setVolume(null);
