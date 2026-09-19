@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# the repo root ignores lib/ for Python; this project keeps its code there
+!lib/
