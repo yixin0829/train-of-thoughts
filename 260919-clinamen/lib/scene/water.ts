@@ -8,8 +8,8 @@ export const RADIUS = 1.5;
 const DEPTH = 0.32;
 /** Most bowls the water knows about (the slider's maximum). */
 export const MAX_BOWLS = 48;
-/** Metres of water per unit of simulated height. */
-const HEIGHT_SCALE = 0.01;
+/** Metres per simulated height unit: the selected 2.5× visibility level. */
+const HEIGHT_SCALE = 0.025;
 
 export const COLORS = {
   lining: "#3aa8d8",
@@ -43,10 +43,15 @@ const heightGlsl = /* glsl */ `
 `;
 
 const waterVertex = /* glsl */ `
+  ${heightGlsl}
   varying vec3 vWorld;
   #include <fog_pars_vertex>
   void main() {
     vec4 world = modelMatrix * vec4(position, 1.0);
+    // The same height field drives geometry and lighting at the waterline.
+    // Fade at the coping so the surface cannot poke through its rolled edge.
+    float edge = 1.0 - smoothstep(uRadius - 0.025, uRadius, length(world.xz));
+    world.y += waveHeight(heightUv(world.xz)) * edge;
     vWorld = world.xyz;
     vec4 mvPosition = viewMatrix * world;
     gl_Position = projectionMatrix * mvPosition;
@@ -68,8 +73,16 @@ const waterFragment = /* glsl */ `
   varying vec3 vWorld;
   #include <fog_pars_fragment>
 
+  // Soft room illumination with no recognizable fixtures. The pattern stays
+  // fixed in world direction; waves bend it through their reflected normals.
+  vec3 reflectedHall(vec3 ray) {
+    float light = 0.5 + 0.22 * sin(ray.x * 7.0 + ray.z * 3.0) + 0.18 * sin(ray.z * 9.0 - ray.y * 4.0);
+    return mix(uSkyLow * 0.6, uSkyHigh * 2.8, smoothstep(0.15, 0.85, light)) * smoothstep(-0.1, 0.4, ray.y);
+  }
+
   void main() {
     vec2 p = vWorld.xz;
+    if (length(p) > uRadius) discard;
     // no water inside a floating bowl (faded over a few mm, not cut, so the edge doesn't
     // alias); a darker meniscus where it meets the porcelain
     float meniscus = 0.0;
@@ -88,9 +101,8 @@ const waterFragment = /* glsl */ `
     vec3 v = normalize(cameraPosition - vWorld);
     float fres = 0.02 + 0.98 * pow(1.0 - max(dot(n, v), 0.0), 5.0);
     vec3 r = reflect(-v, n);
-    // the hall reflected: dim walls near the horizon, the bright skylit vault above
-    vec3 sky = mix(uSkyLow, uSkyHigh, smoothstep(0.0, 0.7, r.y));
-    float spec = pow(max(dot(r, uLightDir), 0.0), 600.0) * 2.0;
+    vec3 sky = reflectedHall(r);
+    float spec = pow(max(dot(r, uLightDir), 0.0), 100.0) * 2.0 * fres;
 
     vec2 screen = gl_FragCoord.xy / uResolution;
     vec3 below = texture2D(uUnder, screen - s * 0.08).rgb;
@@ -171,11 +183,17 @@ function withCaustics(material: THREE.MeshStandardMaterial, shared: Shared, ligh
         }
         // read the surface where this point's sunlight came through, up along the light
         float waveCaustic(vec3 floorPos) {
-          vec2 p = floorPos.xz + uLightDir.xz / uLightDir.y * -floorPos.y;
+          // Sunlight bends toward the normal as it enters water (n = 1.333).
+          // Project along that refracted ray, not the much steeper air-space ray.
+          vec3 ray = refract(-normalize(uLightDir), vec3(0.0, 1.0, 0.0), 1.0 / 1.333);
+          float depth = max(0.0, -floorPos.y);
+          vec2 p = floorPos.xz - ray.xz / -ray.y * depth;
           vec2 uv = heightUv(p);
           vec2 t = vec2(1.0 / ${GRID}.0, 0.0);
           float lap = waveHeight(uv + t.xy) + waveHeight(uv - t.xy) + waveHeight(uv + t.yx) + waveHeight(uv - t.yx) - 4.0 * waveHeight(uv);
-          return clamp(-lap / (CELL * CELL) * 2.2, -0.5, 2.5);
+          // Focusing grows with depth. Keep floor illumination subordinate to
+          // the surface instead of turning each impact into a displaced white ring.
+          return clamp(-lap / (CELL * CELL) * depth * 0.25, -0.2, 0.45);
         }`,
       )
       // Caustics ride on the sunlight, not on the lining's colour: in a bowl's shadow there
@@ -183,7 +201,7 @@ function withCaustics(material: THREE.MeshStandardMaterial, shared: Shared, ligh
       // instead of being cut by a circle, and the shadow stays dark.
       .replace(
         "#include <lights_fragment_end>",
-        "#include <lights_fragment_end>\nreflectedLight.directDiffuse *= 1.0 + 2.5 * ambientCaustic(vCausticPos.xz) + waveCaustic(vCausticPos);",
+        "#include <lights_fragment_end>\nreflectedLight.directDiffuse *= 1.0 + 0.35 * ambientCaustic(vCausticPos.xz) + waveCaustic(vCausticPos);",
       );
   };
   return material;
@@ -233,7 +251,9 @@ export function buildPool(lightDir: THREE.Vector3) {
   ground.receiveShadow = true;
 
   const water = track(waterMaterial(lightDir, shared, under.texture));
-  const surface = add(new THREE.Mesh(track(new THREE.CircleGeometry(RADIUS, 128)), water));
+  // A triangle fan has no interior vertices to carry travelling wave heights.
+  // Match the simulation grid and clip its square footprint in the fragment shader.
+  const surface = add(new THREE.Mesh(track(new THREE.PlaneGeometry(RADIUS * 2, RADIUS * 2, GRID, GRID)), water));
   surface.rotation.x = -Math.PI / 2;
   surface.renderOrder = 1;
 

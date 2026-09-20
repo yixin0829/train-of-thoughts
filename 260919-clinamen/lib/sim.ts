@@ -1,7 +1,31 @@
 import { bowlVoice, type Voice } from "@/lib/audio";
+import { contactRadii } from "@/lib/bowl-shape";
 
 /** Pool radius in centimetres (a 3 m pool). The simulation is 2D, on the water's surface. */
 export const POOL_R = 150;
+/** Three rim inlets, 120 degrees apart: an equilateral triangle, aimed inward. */
+export const STREAMS = Array.from({ length: 3 }, (_, i) => {
+  const angle = -Math.PI / 2 + (i * Math.PI * 2) / 3;
+  const nx = Math.cos(angle);
+  const ny = Math.sin(angle);
+  return { x: nx * POOL_R, y: ny * POOL_R, dx: -nx, dy: -ny };
+});
+export type StreamConfig = {
+  speed: number;
+  width: number;
+  spread: number;
+  reach: number;
+  /** Zero/omitted keeps a steady jet; otherwise stagger three pulses, seconds. */
+  pulsePeriod?: number;
+  /** Fraction of a period during which each jet runs, in (0, 1]. */
+  pulseDuty?: number;
+};
+export const DEFAULT_STREAM_CONFIG: Readonly<StreamConfig> = {
+  // Five-minute headless spacing study: reports/stream-tuning-pulsed/report.md.
+  // Short, staggered pushes avoid the central crowding of steady inward jets.
+  speed: 30, width: 33, spread: 0.22, reach: 107,
+  pulsePeriod: 70, pulseDuty: 0.47,
+};
 /** Bowl diameters, cm; repeats weight the draw toward small bowls. */
 const SIZES = [12, 12, 14, 14, 16, 16, 18, 18, 20, 22, 24, 27, 30, 34, 36];
 /** Relative speed below which a touch is silent, cm/s. */
@@ -59,7 +83,7 @@ export class Sim {
   private nextId = 0;
   private lastRang = new Map<string, number>();
 
-  constructor(count: number) {
+  constructor(count: number, readonly streamConfig: Readonly<StreamConfig> = DEFAULT_STREAM_CONFIG) {
     this.place(count);
   }
 
@@ -101,7 +125,35 @@ export class Sim {
     const speed = this.current * (2 + 10 * Math.sin((d / POOL_R) * Math.PI));
     const wx = Math.sin(x * 0.03 + t * 0.31) * Math.cos(y * 0.025 - t * 0.19);
     const wy = Math.cos(x * 0.024 - t * 0.23) * Math.sin(y * 0.033 + t * 0.17);
-    return [tx * speed + wx * this.current * 9, ty * speed + wy * this.current * 9];
+    let fx = tx * speed + wx * this.current * 9;
+    let fy = ty * speed + wy * this.current * 9;
+    // Water turns along the wall instead of continually pressing bowls into it.
+    const outward = Math.max(0, (fx * x + fy * y) / d);
+    const edge = Math.max(0, Math.min(1, (d - 100) / 30));
+    const turn = edge * edge * (3 - 2 * edge);
+    fx -= outward * turn * x / d;
+    fy -= outward * turn * y / d;
+
+    for (const [index, stream] of STREAMS.entries()) {
+      const px = x - stream.x;
+      const py = y - stream.y;
+      const along = px * stream.dx + py * stream.dy;
+      // Broadening jets blend into the pool near its centre; no opposite-wall push.
+      if (along < 0 || along >= this.streamConfig.reach) continue;
+      const across = px * -stream.dy + py * stream.dx;
+      const width = this.streamConfig.width + along * this.streamConfig.spread;
+      const fade = 1 - along / this.streamConfig.reach;
+      let pulse = 1;
+      if (this.streamConfig.pulsePeriod) {
+        const threshold = Math.cos(Math.PI * (this.streamConfig.pulseDuty ?? 0.5));
+        const phase = 2 * Math.PI * (t / this.streamConfig.pulsePeriod - index / 3);
+        pulse = Math.max(0, (Math.cos(phase) - threshold) / (1 - threshold));
+      }
+      const strength = this.current * this.streamConfig.speed * Math.exp(-((across / width) ** 2)) * fade * fade * pulse;
+      fx += stream.dx * strength;
+      fy += stream.dy * strength;
+    }
+    return [fx, fy];
   }
 
   /** Advance by `dt` seconds; returns the strikes that happened. */
@@ -149,7 +201,8 @@ export class Sim {
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const dist = Math.hypot(dx, dy) || 0.001;
-        const minD = a.r + b.r;
+        const [ra, rb] = contactRadii(a.d, b.d);
+        const minD = ra + rb;
         if (dist >= minD) continue;
         const nx = dx / dist;
         const ny = dy / dist;
@@ -172,7 +225,7 @@ export class Sim {
         const key = `${a.id}:${b.id}`;
         if (-vn > SILENT_BELOW && this.time - (this.lastRang.get(key) ?? -Infinity) > COOLDOWN) {
           this.lastRang.set(key, this.time);
-          strikes.push({ a, b, hit: Math.min(1, -vn / HARDEST), x: a.x + nx * a.r, y: a.y + ny * a.r });
+          strikes.push({ a, b, hit: Math.min(1, -vn / HARDEST), x: a.x + nx * ra, y: a.y + ny * ra });
         }
       }
     }

@@ -11,11 +11,10 @@ const MAX_DROPS = 8;
 const MAX_BOWLS = 48;
 
 // Wave equation on a height field, after Evan Wallace's WebGL Water. Each texel holds
-// (height, velocity). A step first adds this step's disturbances: raised-cosine drops where
-// bowls struck each other, and the water a moving bowl shoves aside (its old footprint
-// minus its new one, which makes a bow wave in front and a trough behind). Then every texel
-// accelerates toward the average of its neighbours, and outside the pool's circle the water
-// is pinned flat, so waves reflect off the wall.
+// (height, velocity). Each step accelerates toward the old neighbours' average, then adds
+// raised-cosine impact drops and water shoved aside by moving bowls (new footprint minus
+// old: a bow wave ahead and a trough behind). Outside the pool the water is pinned flat,
+// so waves reflect off the wall.
 const stepShader = /* glsl */ `
   uniform sampler2D uState;
   uniform vec2 uTexel;
@@ -33,20 +32,22 @@ const stepShader = /* glsl */ `
 
   void main() {
     vec4 s = texture2D(uState, vUv);
+    // Integrate one consistent snapshot. Adding a drop to s.r before this stencil
+    // compares the new centre with OLD neighbours and immediately inverts the drop.
+    float avg = 0.25 * (
+      texture2D(uState, vUv - vec2(uTexel.x, 0.0)).r + texture2D(uState, vUv + vec2(uTexel.x, 0.0)).r +
+      texture2D(uState, vUv - vec2(0.0, uTexel.y)).r + texture2D(uState, vUv + vec2(0.0, uTexel.y)).r);
+    s.g += (avg - s.r) * 1.2;
+    s.g *= 0.985;
+    s.r += s.g;
+
     for (int i = 0; i < ${MAX_DROPS}; i++) {
       vec4 d = uDrops[i];
       if (d.z <= 0.0) continue;
       float k = max(0.0, 1.0 - distance(vUv, d.xy) / d.z);
       s.r += (0.5 - 0.5 * cos(k * 3.14159265)) * d.w;
     }
-    for (int i = 0; i < ${MAX_BOWLS}; i++) s.r += uWake * (footprint(uBowlsWas[i]) - footprint(uBowlsNow[i]));
-
-    float avg = 0.25 * (
-      texture2D(uState, vUv - vec2(uTexel.x, 0.0)).r + texture2D(uState, vUv + vec2(uTexel.x, 0.0)).r +
-      texture2D(uState, vUv - vec2(0.0, uTexel.y)).r + texture2D(uState, vUv + vec2(0.0, uTexel.y)).r);
-    s.g += (avg - s.r) * 2.0;
-    s.g *= 0.985;
-    s.r += s.g;
+    for (int i = 0; i < ${MAX_BOWLS}; i++) s.r += uWake * (footprint(uBowlsNow[i]) - footprint(uBowlsWas[i]));
     if (length(vUv * 2.0 - 1.0) > 1.0) s.rg = vec2(0.0);
     gl_FragColor = s;
   }
@@ -79,8 +80,8 @@ export class Waves {
         depthBuffer: false,
       });
     this.targets = [make(), make()];
-    this.was = Array.from({ length: MAX_BOWLS }, () => new THREE.Vector4());
-    this.now = Array.from({ length: MAX_BOWLS }, () => new THREE.Vector4());
+    this.was = Array.from({ length: MAX_BOWLS }, () => new THREE.Vector4(0, 0, 0, 0));
+    this.now = Array.from({ length: MAX_BOWLS }, () => new THREE.Vector4(0, 0, 0, 0));
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uState: { value: null },
@@ -150,6 +151,7 @@ export class Waves {
 
   /** Forget where bowls were, e.g. after they are all replaced, so nothing sloshes. */
   resetBowls() {
+    this.drops = [];
     for (const v of this.was) v.set(0, 0, 0, 0);
     for (const v of this.now) v.set(0, 0, 0, 0);
   }

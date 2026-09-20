@@ -1,16 +1,12 @@
 import * as THREE from "three";
 
 import type { Bowl } from "@/lib/sim";
+import { HEIGHT, WALL, DRAFT } from "@/lib/bowl-shape";
+export { WATERLINE } from "@/lib/bowl-shape";
 
 /** Bowls live on their own layer, so the view through the water can leave them out. */
 export const BOWL_LAYER = 1;
 
-/** Height of the bowl as a fraction of its diameter. */
-const HEIGHT = 0.4;
-/** Porcelain wall thickness as a fraction of the diameter. */
-const WALL = 0.012;
-/** How deep a bowl sits in the water, as a fraction of its height. */
-const DRAFT = 0.08;
 
 /**
  * Half a bowl's cross-section for a unit diameter, turned on a lathe: the foot ring, an
@@ -40,15 +36,6 @@ function profile() {
   v(0, rise + WALL);
   return pts;
 }
-
-/** Radius, as a fraction of the diameter, where the outer wall crosses the waterline. */
-export const WATERLINE = (() => {
-  const pts = profile();
-  const y = DRAFT * HEIGHT;
-  const i = pts.findIndex((p, k) => k > 4 && p.y >= y);
-  const [a, b] = [pts[i - 1], pts[i]];
-  return a.x + ((b.x - a.x) * (y - a.y)) / (b.y - a.y);
-})();
 
 /**
  * The lathe mesh, with vertex colours standing in for light that doesn't reach into the well:

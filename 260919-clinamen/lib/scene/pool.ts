@@ -16,6 +16,8 @@ const HOME_TALL = new THREE.Vector3(0, 3.4, 1.6);
 const HOLD = 1.7;
 /** The skylight, well off vertical so a bowl's shadow lands clear of it on the lining. */
 const LIGHT = new THREE.Vector3(1.5, 3.4, 1.1);
+/** Small, shared steps keep impacts and water in sync even on slower displays. */
+const STEP = 1 / 120;
 
 /**
  * The whole 3D pool, in plain three.js: renderer, camera, controls, the simulation and the
@@ -36,6 +38,8 @@ export class PoolScene {
   private chimes: Chimes | null = null;
   private frame = 0;
   private last = performance.now();
+  private owed = 0;
+  private time = 0;
   private resizer: ResizeObserver;
 
   private raycaster = new THREE.Raycaster();
@@ -181,15 +185,18 @@ export class PoolScene {
     this.frame = requestAnimationFrame(this.tick);
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
-    const time = now / 1000;
-    this.pool.time.value = time;
-
-    if (this.chimes) for (const s of this.sim.step(dt)) this.strike(s);
-
-    for (const m of this.meshes.values()) m.update(dt, time);
+    this.owed += dt;
+    while (this.owed + 1e-9 >= STEP) {
+      this.owed = Math.max(0, this.owed - STEP);
+      this.time += STEP;
+      if (this.chimes) for (const s of this.sim.step(STEP)) this.strike(s);
+      for (const m of this.meshes.values()) m.update(STEP, this.time);
+      const circles = this.sim.bowls.map((b): [number, number, number] => [b.x / 100, b.y / 100, (WATERLINE * b.d) / 100]);
+      this.waves.update(STEP, circles);
+    }
+    this.pool.time.value = this.time;
     const circles = this.sim.bowls.map((b): [number, number, number] => [b.x / 100, b.y / 100, (WATERLINE * b.d) / 100]);
     this.pool.setBowls(circles);
-    this.waves.update(dt, circles);
     this.pool.height.value = this.waves.texture;
     this.controls.update();
     this.pool.render(this.renderer, this.scene, this.camera);
